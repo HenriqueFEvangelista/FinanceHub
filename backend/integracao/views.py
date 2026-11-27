@@ -1,8 +1,11 @@
 import re
 import requests
 from django.conf import settings
+from django.core.exceptions import ValidationError
+from django.db import DatabaseError
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
+from .models import HistoricoPesquisa
 
 
 @api_view(["GET"])
@@ -44,7 +47,7 @@ def buscar_acao(request, simbolo):
         data = max(historico)
         acao = historico[data]
         resultado = {
-            "mensagem": "Dados consumidos com sucesso!",
+            "mensagem": "Dados consumidos e salvos no banco com sucesso!",
             "simbolo": simbolo,
             "data": data,
             "abertura": acao["1. open"],
@@ -55,5 +58,22 @@ def buscar_acao(request, simbolo):
         }
     except (KeyError, TypeError, ValueError):
         return Response({"erro": "Dados financeiros externos inválidos."}, status=502)
+
+    pesquisa = HistoricoPesquisa(
+        simbolo=resultado["simbolo"],
+        data_pregao=resultado["data"],
+        abertura=resultado["abertura"],
+        maxima=resultado["maxima"],
+        minima=resultado["minima"],
+        fechamento=resultado["fechamento"],
+        volume=resultado["volume"],
+    )
+    try:
+        pesquisa.full_clean()
+        pesquisa.save()
+    except ValidationError:
+        return Response({"erro": "Dados financeiros externos inválidos."}, status=502)
+    except DatabaseError:
+        return Response({"erro": "Falha ao salvar o histórico."}, status=500)
 
     return Response(resultado)
